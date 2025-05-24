@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Borehole Yield Test</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      padding: 10px;
+      margin: 0;
+      background-color: #d2fdfa;
+    }
+    h2, h3 { color: #0080ff; }
+    label, input, button {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      margin: 8px 0;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 1em;
+    }
+    button {
+      background-color: #0080ff;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #005bb5;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .col {
+      flex: 1 1 200px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      background-color: white;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+      font-size: 0.9em;
+    }
+    .button-group {
+      margin: 15px 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    #summary {
+      margin-top: 25px;
+      padding: 15px;
+      background-color: white;
+      border: 1px solid #ccc;
+      max-width: 400px;
+      font-size: 1.1em;
+      color: #333;
+    }
+    @media (max-width: 600px) {
+      input, button { font-size: 1em; }
+      #summary { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+<div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+  <div>
+    <label for="companyName">Company/Individual Name:</label><br>
+    <input type="text" id="companyName" placeholder="Enter name" style="width: 300px;">
+  </div>
+
+  <div>
+    <label for="logoUpload">Upload Logo:</label><br>
+    <input type="file" id="logoUpload" accept="image/*">
+  </div>
+
+  <img id="logoPreview" src="" alt="Logo Preview" style="max-height: 80px; display: none; border: 1px solid #ccc; padding: 4px;">
+</div>
+
+  <h2>Borehole Yield Test</h2>
+
+  <div class="row">
+    <div class="col"><label>Location</label><input type="text" id="location" /></div>
+    <div class="col"><label>Date</label><input type="date" id="testDate" /></div>
+    <div class="col"><label>Latitude</label><input type="text" id="latitude" readonly /></div>
+    <div class="col"><label>Longitude</label><input type="text" id="longitude" readonly /></div>
+    <div class="col"><button onclick="getLocation()">Get GPS Coordinates</button></div>
+    <div class="col"><label>Static Water Level (m)</label><input type="number" id="staticLevel" /></div>
+  </div>
+
+  <h3>Yield Test</h3>
+  <div class="row">
+    <div class="col"><label>Time (min)</label><input type="number" id="time" /></div>
+    <div class="col"><label>Depth (m)</label><input type="number" id="depth" /></div>
+    <div class="col"><label>20L Fill Time (s)</label><input type="number" id="fillTime" /></div>
+    <div class="col"><button onclick="addYieldEntry()">Add Yield Entry</button></div>
+  </div>
+
+  <table id="yieldTable">
+    <thead>
+      <tr>
+        <th>Time</th><th>Depth</th><th>Drawdown</th><th>Fill Time</th><th>Discharge</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <h3>Recharge Test</h3>
+  <div class="row">
+    <div class="col"><label>Time (min)</label><input type="number" id="reTime" /></div>
+    <div class="col"><label>Current Drawdown (m)</label><input type="number" id="reDrawdown" /></div>
+    <div class="col"><button onclick="addRechargeEntry()">Add Recharge Entry</button></div>
+  </div>
+
+  <table id="rechargeTable">
+    <thead>
+      <tr>
+        <th>Time</th><th>Drawdown</th><th>Residual Drawdown</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="summary">
+    <h3>Summary of Pump Test</h3>
+    <p><strong>Discharge:</strong> <span id="sumDischarge">0</span> m³/hr</p>
+    <p><strong>Drawdown:</strong> <span id="sumDrawdown">0</span> m</p>
+    <p><strong>Recovery:</strong> <span id="sumRecovery">0</span> m</p>
+    <p><strong>Recovery %:</strong> <span id="sumRecoveryPercent">0</span> %</p>
+    <p><strong>Recommended Pump Discharge:</strong> <span id="recommendedPumpDischarge">N/A</span> m³/hr</p>
+    <p><strong>Recommendation:</strong> <span id="pumpRecommendation"></span></p>
+  </div>
+
+  <div class="button-group">
+    <button onclick="exportCSV()">Export CSV</button>
+    <button onclick="exportPDF()">Export PDF</button>
+    <button onclick="shareWhatsApp()">Share via WhatsApp</button>
+  </div>
+
+  <script>
+    let uploadedLogoDataURL = "";
+
+document.getElementById('logoUpload').addEventListener('change', function () {
+    const file = this.files[0];
+    if (file && file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            uploadedLogoDataURL = e.target.result;
+            const logoPreview = document.getElementById('logoPreview');
+            logoPreview.src = uploadedLogoDataURL;
+            logoPreview.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+    const yieldTBody = document.querySelector("#yieldTable tbody");
+    const rechargeTBody = document.querySelector("#rechargeTable tbody");
+    let yieldData = [], rechargeData = [];
+    let editingYieldIndex = null, editingRechargeIndex = null;
+
+    function getLocation() {
+      if (!navigator.geolocation) return alert("Geolocation not supported");
+      navigator.geolocation.getCurrentPosition(pos => {
+        document.getElementById("latitude").value = pos.coords.latitude.toFixed(6);
+        document.getElementById("longitude").value = pos.coords.longitude.toFixed(6);
+      }, () => alert("Failed to get location."));
+    }
+
+    function addYieldEntry() {
+      const time = parseFloat(document.getElementById("time").value);
+      const depth = parseFloat(document.getElementById("depth").value);
+      const fillTime = parseFloat(document.getElementById("fillTime").value);
+      const staticLevel = parseFloat(document.getElementById("staticLevel").value);
+      if (isNaN(time) || isNaN(depth) || isNaN(fillTime) || isNaN(staticLevel)) {
+        alert("Fill all fields correctly");
+        return;
+      }
+      const drawdown = +(depth - staticLevel).toFixed(2);
+      const discharge = +(72 / fillTime).toFixed(3);
+      const entry = { time, depth, drawdown, fillTime, discharge };
+
+      if (editingYieldIndex !== null) {
+        yieldData[editingYieldIndex] = entry;
+        editingYieldIndex = null;
+      } else yieldData.push(entry);
+
+      yieldData.sort((a, b) => a.time - b.time);
+      renderYieldTable();
+      updateSummary();
+      document.getElementById("time").value = "";
+      document.getElementById("depth").value = "";
+      document.getElementById("fillTime").value = "";
+    }
+
+    function renderYieldTable() {
+      yieldTBody.innerHTML = "";
+      yieldData.forEach((row, i) => {
+        yieldTBody.innerHTML += `
+          <tr>
+            <td>${row.time}</td>
+            <td>${row.depth}</td>
+            <td>${row.drawdown}</td>
+            <td>${row.fillTime}</td>
+            <td>${row.discharge}</td>
+            <td>
+              <button onclick="editYield(${i})">Edit</button>
+              <button onclick="deleteYield(${i})">Delete</button>
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    function editYield(i) {
+      const e = yieldData[i];
+      document.getElementById("time").value = e.time;
+      document.getElementById("depth").value = e.depth;
+      document.getElementById("fillTime").value = e.fillTime;
+      editingYieldIndex = i;
+    }
+
+    function deleteYield(i) {
+      if (confirm("Delete this yield entry?")) {
+        yieldData.splice(i, 1);
+        renderYieldTable();
+        updateSummary();
+      }
+    }
+
+    function addRechargeEntry() {
+      const time = parseFloat(document.getElementById("reTime").value);
+      const currentDrawdown = parseFloat(document.getElementById("reDrawdown").value);
+      if (isNaN(time) || isNaN(currentDrawdown)) {
+        alert("Fill recharge time and current drawdown");
+        return;
+      }
+
+      const firstDrawdown = rechargeData.length ? rechargeData[0].drawdown : currentDrawdown;
+      let residualDrawdown = +(firstDrawdown - currentDrawdown).toFixed(2);
+      if (residualDrawdown < 0) residualDrawdown = 0;
+
+      const entry = { time, drawdown: currentDrawdown, residualDrawdown };
+
+      if (editingRechargeIndex !== null) {
+        rechargeData[editingRechargeIndex] = entry;
+        editingRechargeIndex = null;
+      } else rechargeData.push(entry);
+
+      rechargeData.sort((a, b) => a.time - b.time);
+      renderRechargeTable();
+      updateSummary();
+      document.getElementById("reTime").value = "";
+      document.getElementById("reDrawdown").value = "";
+    }
+
+    function renderRechargeTable() {
+      rechargeTBody.innerHTML = "";
+      rechargeData.forEach((row, i) => {
+        rechargeTBody.innerHTML += `
+          <tr>
+            <td>${row.time}</td>
+            <td>${row.drawdown}</td>
+            <td>${row.residualDrawdown}</td>
+            <td>
+              <button onclick="editRecharge(${i})">Edit</button>
+              <button onclick="deleteRecharge(${i})">Delete</button>
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    function editRecharge(i) {
+      const e = rechargeData[i];
+      document.getElementById("reTime").value = e.time;
+      document.getElementById("reDrawdown").value = e.drawdown;
+      editingRechargeIndex = i;
+    }
+
+    function deleteRecharge(i) {
+      if (confirm("Delete this recharge entry?")) {
+        rechargeData.splice(i, 1);
+        renderRechargeTable();
+        updateSummary();
+      }
+    }
+
+    function updateSummary() {
+      const lastDischarge = yieldData.length ? yieldData[yieldData.length - 1].discharge : 0;
+      const lastDrawdown = yieldData.length ? yieldData[yieldData.length - 1].drawdown : 0;
+      const lastResidualDrawdown = rechargeData.length ? rechargeData[rechargeData.length - 1].residualDrawdown : 0;
+      const recoveryPercent = lastDrawdown ? (lastResidualDrawdown / lastDrawdown) * 100 : 0;
+      const recommendedPumpDischarge = +(lastDischarge * (recoveryPercent / 100)).toFixed(3);
+
+      document.getElementById("sumDischarge").textContent = lastDischarge.toFixed(3);
+      document.getElementById("sumDrawdown").textContent = lastDrawdown.toFixed(3);
+      document.getElementById("sumRecovery").textContent = lastResidualDrawdown.toFixed(3);
+      document.getElementById("sumRecoveryPercent").textContent = recoveryPercent.toFixed(1);
+      document.getElementById("recommendedPumpDischarge").textContent = recommendedPumpDischarge;
+      document.getElementById("pumpRecommendation").textContent = getPumpRecommendation(recommendedPumpDischarge);
+    }
+
+    function getPumpRecommendation(recommendedDischarge) {
+      if (recommendedDischarge === 0) return "No data";
+
+      if (recommendedDischarge < 0.72) {
+        return "Poor yield - Not recommended to install a pump.";
+      } else if (recommendedDischarge < 1.8) {
+        return "Low yield - Consider a small pump.";
+      } else if (recommendedDischarge < 3.6) {
+        return "Moderate yield - Pump can be installed.";
+      } else {
+        return "Good yield - Pump can be installed.";
+      }
+    }
+
+    function exportCSV() {
+      let csv = "Yield Test\nTime(min),Depth(m),Drawdown(m),Fill Time(s),Discharge(m³/hr)\n";
+      yieldData.forEach(r => {
+        csv += `${r.time},${r.depth},${r.drawdown},${r.fillTime},${r.discharge}\n`;
+      });
+
+      csv += "\nRecharge Test\nTime(min),Drawdown(m),Residual Drawdown(m)\n";
+      rechargeData.forEach(r => {
+        csv += `${r.time},${r.drawdown},${r.residualDrawdown}\n`;
+      });
+
+      csv += `\nSummary\nDischarge (m³/hr),Drawdown (m),Recovery (m),Recovery %\n${document.getElementById("sumDischarge").textContent},${document.getElementById("sumDrawdown").textContent},${document.getElementById("sumRecovery").textContent},${document.getElementById("sumRecoveryPercent").textContent}\n`;
+
+      const blob = new Blob([csv], {type: "text/csv"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "borehole_yield_test.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+function exportPDF() {
+  const location = document.getElementById("location").value || "N/A";
+  const date = document.getElementById("testDate").value || "N/A";
+  const latitude = document.getElementById("latitude").value || "N/A";
+  const longitude = document.getElementById("longitude").value || "N/A";
+  const staticLevel = document.getElementById("staticLevel").value || "N/A";
+  const companyName = document.getElementById("companyName").value || "";
+  const logoHTML = uploadedLogoDataURL
+    ? `<img src="${uploadedLogoDataURL}" style="max-height:80px; margin-top:5px;" />`
+    : "";
+
+  const element = document.createElement('div');
+  element.innerHTML = `
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 12pt; color: #000; }
+      h3, h4 { color: #005bb5; }
+      table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+      th, td { border: 1px solid #333; padding: 6px 8px; text-align: center; }
+      th { background-color: #e0e7ff; }
+      p { margin: 5px 0; }
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+    </style>
+
+    <div class="header">
+      ${companyName ? `<h2>${companyName}</h2>` : ""}
+      ${logoHTML}
+    </div>
+
+    <h3>Borehole Yield Test Report</h3>
+    <p><strong>Location:</strong> ${location}</p>
+    <p><strong>Date:</strong> ${date}</p>
+    <p><strong>GPS Coordinates:</strong> Latitude: ${latitude}, Longitude: ${longitude}</p>
+    <p><strong>Static Water Level (m):</strong> ${staticLevel}</p>
+
+    <h4>Yield Test</h4>
+    <table>
+      <thead>
+        <tr><th>Time (min)</th><th>Depth (m)</th><th>Drawdown (m)</th><th>Fill Time (s)</th><th>Discharge (m³/hr)</th></tr>
+      </thead>
+      <tbody>
+        ${yieldData.map(r => `<tr><td>${r.time}</td><td>${r.depth}</td><td>${r.drawdown}</td><td>${r.fillTime}</td><td>${r.discharge}</td></tr>`).join('')}
+      </tbody>
+    </table>
+
+    <h4>Recharge Test</h4>
+    <table>
+      <thead>
+        <tr><th>Time (min)</th><th>Drawdown (m)</th><th>Residual Drawdown (m)</th></tr>
+      </thead>
+      <tbody>
+        ${rechargeData.map(r => `<tr><td>${r.time}</td><td>${r.drawdown}</td><td>${r.residualDrawdown}</td></tr>`).join('')}
+      </tbody>
+    </table>
+
+    <h4>Summary</h4>
+    <p><strong>Discharge:</strong> ${document.getElementById("sumDischarge").textContent} m³/hr</p>
+    <p><strong>Drawdown:</strong> ${document.getElementById("sumDrawdown").textContent} m</p>
+    <p><strong>Recovery:</strong> ${document.getElementById("sumRecovery").textContent} m</p>
+    <p><strong>Recovery %:</strong> ${document.getElementById("sumRecoveryPercent").textContent} %</p>
+    <p><strong>Recommended Pump Discharge:</strong> ${document.getElementById("recommendedPumpDischarge").textContent} m³/hr</p>
+    <p><strong>Recommendation:</strong> ${document.getElementById("pumpRecommendation").textContent}</p>
+  `;
+
+  html2pdf().from(element).save('borehole_yield_test.pdf');
+}
+    function shareWhatsApp() {
+  const loc = document.getElementById("location").value || "N/A";
+  const date = document.getElementById("testDate").value || "N/A";
+  let message = `*Borehole Yield Test*\nLocation: ${loc}\nDate: ${date}\n\n`;
+
+  message += `*Yield Test*\nTime(min) | Depth(m) | Drawdown(m) | Fill Time(s) | Discharge(m³/hr)\n`;
+  yieldData.forEach(r => {
+    message += `${r.time} | ${r.depth} | ${r.drawdown} | ${r.fillTime} | ${r.discharge}\n`;
+  });
+
+  message += `\n*Recharge Test*\nTime(min) | Drawdown(m) | Residual Drawdown(m)\n`;
+  rechargeData.forEach(r => {
+    message += `${r.time} | ${r.drawdown} | ${r.residualDrawdown}\n`;
+  });
+
+  message += `\n*Summary*\n`;
+  message += `Discharge: ${document.getElementById("sumDischarge").textContent} m³/hr\n`;
+  message += `Drawdown: ${document.getElementById("sumDrawdown").textContent} m\n`;
+  message += `Recovery: ${document.getElementById("sumRecovery").textContent} m\n`;
+  message += `Recovery %: ${document.getElementById("sumRecoveryPercent").textContent} %\n`;
+  message += `Recommended Pump Discharge: ${document.getElementById("recommendedPumpDischarge").textContent} m³/hr\n`;
+  message += `Recommendation: ${document.getElementById("pumpRecommendation").textContent}`;
+
+  const encodedMessage = encodeURIComponent(message);
+  const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
+  window.open(whatsappUrl, "_blank");
+}
+  </script>
+</body>
+</html>
